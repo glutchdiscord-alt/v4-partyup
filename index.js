@@ -1611,6 +1611,9 @@ async function handleModCommand(interaction) {
 
 async function handleJoinLfg(interaction) {
     try {
+        // Defer the interaction immediately to prevent timeout
+        await interaction.deferUpdate();
+        
         const sessionId = interaction.customId.replace('join_lfg_', '');
         const session = activeSessions.get(sessionId);
         
@@ -1627,18 +1630,10 @@ async function handleJoinLfg(interaction) {
                 .setTimestamp();
             
             try {
-                await interaction.update({ embeds: [embed], components: [] });
+                await interaction.editReply({ embeds: [embed], components: [] });
                 console.log(`Disabled outdated LFG button for session ${sessionId}`);
             } catch (updateError) {
                 console.error('Error disabling outdated button:', updateError);
-                // If update fails, try reply instead - but don't do both
-                try {
-                    if (!interaction.replied && !interaction.deferred) {
-                        await interaction.reply({ content: '❌ This LFG session is no longer active!', flags: 64 });
-                    }
-                } catch (replyError) {
-                    console.error('Error sending expired session message:', replyError);
-                }
             }
             return;
         }
@@ -1661,10 +1656,9 @@ async function handleJoinLfg(interaction) {
             
             console.log(`User ${interaction.user.id} (${interaction.user.displayName}) tried to join session they're already in`);
             
-            return interaction.reply({ 
+            return interaction.editReply({ 
                 embeds: [statusEmbed],
-                components: [row],
-                flags: 64 
+                components: [row]
             });
         }
         
@@ -1675,7 +1669,7 @@ async function handleJoinLfg(interaction) {
                 .setDescription(`**This ${session.game} session is already complete**\n\n👥 **Team:** ${session.currentPlayers.length}/${session.playersNeeded}\n🎮 **Status:** ${session.status === 'confirming' ? 'Players confirming' : 'Team filled'}\n\n🔍 Try creating your own LFG with \`/lfg\`!`)
                 .setTimestamp();
                 
-            return interaction.reply({ embeds: [fullEmbed], flags: 64 });
+            return interaction.editReply({ embeds: [fullEmbed] });
         }
         
         // Check if user is already in another LFG session (improved check)
@@ -1690,9 +1684,8 @@ async function handleJoinLfg(interaction) {
                 .setDescription(`**You can only be in one LFG session at a time**\n\n🎮 **Current Session:** ${userInOtherSession.game}\n🆔 **Session ID:** #${userInOtherSession.id.slice(-6)}\n👥 **Team:** ${userInOtherSession.currentPlayers.length}/${userInOtherSession.playersNeeded}\n\n🚪 Leave your current session first to join this one!`)
                 .setTimestamp();
                 
-            return interaction.reply({ 
-                embeds: [conflictEmbed],
-                flags: 64 
+            return interaction.editReply({ 
+                embeds: [conflictEmbed]
             });
         }
         
@@ -1772,7 +1765,7 @@ async function handleJoinLfg(interaction) {
             .setTimestamp();
         
         try {
-            await interaction.update({ embeds: [embed], components: [row] });
+            await interaction.editReply({ embeds: [embed], components: [row] });
             
             // Use a separate channel message instead of followUp to avoid interaction conflicts
             const channel = interaction.guild.channels.cache.get(session.channelId);
@@ -1785,12 +1778,6 @@ async function handleJoinLfg(interaction) {
             }
         } catch (interactionError) {
             console.error('Error updating interaction for full team:', interactionError);
-            // Fallback: try to edit reply instead
-            try {
-                await interaction.editReply({ embeds: [embed], components: [row] });
-            } catch (fallbackError) {
-                console.error('Fallback interaction update also failed:', fallbackError);
-            }
         }
         
         // Clear any existing timeout first to prevent conflicts
@@ -1820,7 +1807,7 @@ async function handleJoinLfg(interaction) {
         
         const row = new ActionRowBuilder().addComponents(joinButton);
         
-        await interaction.update({ content: '', embeds: [embed], components: [row] });
+        await interaction.editReply({ embeds: [embed], components: [row] });
         
         // Enhanced join confirmation with better UX (only for non-full teams)
         const successEmbed = new EmbedBuilder()
@@ -1837,43 +1824,27 @@ async function handleJoinLfg(interaction) {
         
         const leaveRow = new ActionRowBuilder().addComponents(leaveButton);
         
+        // Send join confirmation to channel instead of followUp to avoid interaction conflicts
         try {
-            await interaction.followUp({ 
-                embeds: [successEmbed], 
-                components: [leaveRow],
-                flags: 64 
-            });
-        } catch (followUpError) {
-            console.error('Error sending join confirmation:', followUpError);
-            // Fallback: send to channel instead
-            try {
-                const channel = interaction.guild.channels.cache.get(session.channelId);
-                if (channel) {
-                    await channel.send({ 
-                        content: `<@${interaction.user.id}>`,
-                        embeds: [successEmbed], 
-                        components: [leaveRow],
-                        allowedMentions: { users: [interaction.user.id] }
-                    });
-                }
-            } catch (channelError) {
-                console.error('Channel fallback also failed:', channelError);
+            const channel = interaction.guild.channels.cache.get(session.channelId);
+            if (channel) {
+                await channel.send({ 
+                    content: `<@${interaction.user.id}>`,
+                    embeds: [successEmbed], 
+                    components: [leaveRow],
+                    allowedMentions: { users: [interaction.user.id] }
+                });
             }
+        } catch (channelError) {
+            console.error('Error sending join confirmation to channel:', channelError);
         }
     }
     } catch (error) {
         console.error('Error in handleJoinLfg:', error);
         try {
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ 
-                    content: '❌ Something went wrong. Please try again.', 
-                    flags: 64 
-                });
-            } else if (interaction.deferred) {
-                await interaction.editReply({ 
-                    content: '❌ Something went wrong. Please try again.'
-                });
-            }
+            await interaction.editReply({ 
+                content: '❌ Something went wrong. Please try again.'
+            });
         } catch (replyError) {
             console.error('Error replying to interaction:', replyError);
         }
@@ -1881,6 +1852,8 @@ async function handleJoinLfg(interaction) {
 }
 
 async function handleConfirmation(interaction) {
+    await interaction.deferReply({ flags: 64 });
+    
     const sessionId = interaction.customId.replace('confirm_', '');
     const session = activeSessions.get(sessionId);
     
@@ -1890,7 +1863,7 @@ async function handleConfirmation(interaction) {
             .setTitle('⏰ **Session Expired**')
             .setDescription('This LFG session is no longer active or has been completed.\n\n🆕 Create a new session with `/lfg`')
             .setTimestamp();
-        return interaction.reply({ embeds: [expiredEmbed], flags: 64 });
+        return interaction.editReply({ embeds: [expiredEmbed] });
     }
     
     if (!session.currentPlayers.includes(interaction.user.id)) {
@@ -1899,7 +1872,7 @@ async function handleConfirmation(interaction) {
             .setTitle('❌ **Not in Team**')
             .setDescription('You are not part of this LFG session!\n\n🔍 Look for open sessions or create your own with `/lfg`')
             .setTimestamp();
-        return interaction.reply({ embeds: [notInSessionEmbed], flags: 64 });
+        return interaction.editReply({ embeds: [notInSessionEmbed] });
     }
     
     if (session.status !== 'confirming') {
@@ -1908,7 +1881,7 @@ async function handleConfirmation(interaction) {
             .setTitle('⚠️ **Not in Confirmation Phase**')
             .setDescription('This session is not currently asking for confirmations.\n\n⏰ Wait for the team to fill up!')
             .setTimestamp();
-        return interaction.reply({ embeds: [notConfirmingEmbed], flags: 64 });
+        return interaction.editReply({ embeds: [notConfirmingEmbed] });
     }
     
     if (session.confirmedPlayers.includes(interaction.user.id)) {
@@ -1917,7 +1890,7 @@ async function handleConfirmation(interaction) {
             .setTitle('✅ **Already Confirmed!**')
             .setDescription(`You've already confirmed for this ${session.game} session!\n\n⏰ Waiting for other players to confirm...`)
             .setTimestamp();
-        return interaction.reply({ embeds: [alreadyConfirmedEmbed], flags: 64 });
+        return interaction.editReply({ embeds: [alreadyConfirmedEmbed] });
     }
     
     session.confirmedPlayers.push(interaction.user.id);
@@ -1932,16 +1905,18 @@ async function handleConfirmation(interaction) {
         console.log(`All players confirmed for session ${sessionId}, finalizing`);
         await finalizeSession(session, interaction);
     } else {
-        await interaction.reply({ content: '✅ Confirmed! Waiting for other players...', flags: 64 });
+        await interaction.editReply({ content: '✅ Confirmed! Waiting for other players...' });
     }
 }
 
 async function handleDecline(interaction) {
+    await interaction.deferReply({ flags: 64 });
+    
     const sessionId = interaction.customId.replace('decline_', '');
     const session = activeSessions.get(sessionId);
     
     if (!session || !session.currentPlayers.includes(interaction.user.id)) {
-        return interaction.reply({ content: '❌ You are not part of this LFG!', flags: 64 });
+        return interaction.editReply({ content: '❌ You are not part of this LFG!' });
     }
     
     // Check if the session creator is declining - if so, cancel entire session
@@ -1993,7 +1968,7 @@ async function handleDecline(interaction) {
             .setTimestamp();
         
         await interaction.update({ embeds: [cancelledEmbed], components: [] });
-        await interaction.followUp({ content: '❌ You cancelled your LFG session.', flags: 64 });
+        await interaction.editReply({ content: '❌ You cancelled your LFG session.' });
         return;
     }
     
@@ -2023,7 +1998,7 @@ async function handleDecline(interaction) {
         console.error('Error removing voice channel access:', error);
     }
     
-    await interaction.reply({ content: '❌ You declined the LFG session.', flags: 64 });
+    await interaction.editReply({ content: '❌ You declined the LFG session.' });
     
     // Reopen LFG for remaining spots
     await reopenLfg(session);
