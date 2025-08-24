@@ -643,6 +643,18 @@ function createDetailedLfgEmbed(session, guild, sessionId) {
                 inline: false 
             },
             { 
+                name: '🎯 Current Squad', 
+                value: session.currentPlayers.length > 0 
+                    ? session.currentPlayers.map((playerId, index) => {
+                        const member = guild.members.cache.get(playerId);
+                        const playerName = member?.displayName || `Player-${playerId.slice(-4)}`;
+                        const icon = index === 0 ? '👑' : '⚔️'; // Leader gets crown, others get sword
+                        return `${icon} **${playerName}**`;
+                    }).join('\n')
+                    : '🔍 **Waiting for players to join...**', 
+                inline: false 
+            },
+            { 
                 name: '🎮 Game Details', 
                 value: `**Game:** ${session.game}\n**Mode:** ${session.gamemode}\n**Skill Level:** All Welcome`, 
                 inline: true 
