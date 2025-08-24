@@ -1,0 +1,25 @@
+services:
+  - type: worker
+    name: lfg-discord-bot
+    env: node
+    runtime: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: PGPORT
+        sync: false
+      - key: PGUSER
+        sync: false
+      - key: PGPASSWORD
+        sync: false
+      - key: PGDATABASE
+        sync: false
+      - key: PGHOST
+        sync: false
+    plan: starter
+    region: oregon
+    autoDeploy: false
