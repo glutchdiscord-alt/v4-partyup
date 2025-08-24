@@ -1824,19 +1824,29 @@ async function handleJoinLfg(interaction) {
         
         const leaveRow = new ActionRowBuilder().addComponents(leaveButton);
         
-        // Send join confirmation to channel instead of followUp to avoid interaction conflicts
+        // Send join confirmation as ephemeral message (only visible to the user who joined)
         try {
-            const channel = interaction.guild.channels.cache.get(session.channelId);
-            if (channel) {
-                await channel.send({ 
-                    content: `<@${interaction.user.id}>`,
-                    embeds: [successEmbed], 
-                    components: [leaveRow],
-                    allowedMentions: { users: [interaction.user.id] }
-                });
+            await interaction.followUp({ 
+                embeds: [successEmbed], 
+                components: [leaveRow],
+                ephemeral: true
+            });
+        } catch (followUpError) {
+            console.error('Error sending join confirmation:', followUpError);
+            // Fallback to channel message if followUp fails
+            try {
+                const channel = interaction.guild.channels.cache.get(session.channelId);
+                if (channel) {
+                    await channel.send({ 
+                        content: `<@${interaction.user.id}>`,
+                        embeds: [successEmbed], 
+                        components: [leaveRow],
+                        allowedMentions: { users: [interaction.user.id] }
+                    });
+                }
+            } catch (channelError) {
+                console.error('Error sending fallback join confirmation:', channelError);
             }
-        } catch (channelError) {
-            console.error('Error sending join confirmation to channel:', channelError);
         }
     }
     } catch (error) {
